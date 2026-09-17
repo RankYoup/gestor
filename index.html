@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestor de Actividades</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+  header { background: #1e293b; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+  header h1 { margin: 0; font-size: 1.2rem; }
+  nav { display: flex; gap: 0.5rem; padding: 0.5rem; background: #e2e8f0; flex-wrap: wrap; }
+  nav button { padding: 0.5rem 1rem; border: none; background: #cbd5e1; cursor: pointer; border-radius: 6px; font-size: 0.9rem; }
+  nav button:hover { background: #94a3b8; }
+  main { padding: 1rem; max-width: 900px; margin: auto; }
+  form { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  input, select { padding: 0.5rem; border: 1px solid #ccc; border-radius: 6px; font-size: 0.9rem; }
+  button[type="submit"] { background: #2563eb; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; }
+  button[type="submit"]:hover { background: #1d4ed8; }
+  ul { list-style: none; padding: 0; }
+  li { background: white; margin-bottom: 0.5rem; padding: 0.75rem; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .card { background: white; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  .flex { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .flex > * { flex: 1; min-width: 150px; }
+  .del { background: #ef4444; color: white; border: none; padding: 0.25rem 0.6rem; border-radius: 4px; cursor: pointer; float: right; font-size: 0.8rem; }
+  #auth { max-width: 400px; margin: 4rem auto; padding: 2rem; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  #auth input { width: 100%; margin-bottom: 0.5rem; }
+  #auth button { width: 100%; margin-bottom: 0.5rem; padding: 0.6rem; border: none; border-radius: 6px; cursor: pointer; font-size: 1rem; }
+  .btn-primary { background: #2563eb; color: white; }
+  .btn-secondary { background: #e2e8f0; color: #222; }
+  .msg { padding: 0.5rem; margin-bottom: 0.5rem; border-radius: 4px; font-size: 0.9rem; }
+  .msg-ok { background: #dcfce7; color: #166534; }
+  .msg-err { background: #fee2e2; color: #991b1b; }
+</style>
+</head>
+<body>
+
+<div id="auth">
+  <h2 style="margin-top:0;">Gestor de Actividades</h2>
+  <div id="auth-msg"></div>
+  <input id="email" type="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Contraseña (mín. 6 caracteres)">
+  <button class="btn-primary" onclick="signIn()">Entrar</button>
+  <button class="btn-secondary" onclick="signUp()">Registrarse</button>
+</div>
+
+<div id="app" style="display:none;">
+  <header>
+    <h1>Gestor de Actividades</h1>
+    <button onclick="signOut()" style="background:#ef4444;color:white;border:none;padding:0.5rem 1rem;border-radius:6px;cursor:pointer;">Salir</button>
+  </header>
+  <nav>
+    <button onclick="showTab('dashboard')">Dashboard</button>
+    <button onclick="showTab('projects')">Proyectos</button>
+    <button onclick="showTab('tasks')">Tareas</button>
+    <button onclick="showTab('transactions')">Finanzas</button>
+    <button onclick="showTab('debts')">Deudas</button>
+    <button onclick="showTab('clients')">Clientes</button>
+  </nav>
+  <main id="content"></main>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://aftksioxtvfzpkpimwbs.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'sb_publishable_xaom5CnRAKaIWhe_n72kEA_pJON3CFU';
+
+const { createClient } = window.supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let user = null;
+
+function setMsg(id, text, ok) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = text ? `<div class="msg ${ok ? 'msg-ok' : 'msg-err'}">${text}</div>` : '';
+}
+
+async function signIn() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await db.auth.signInWithPassword({ email, password });
+  if (error) setMsg('auth-msg', error.message, false);
+}
+
+async function signUp() {
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  const { error } = await db.auth.signUp({ email, password });
+  if (error) setMsg('auth-msg', error.message, false);
+  else setMsg('auth-msg', 'Cuenta creada. Revisa tu correo si Supabase pide confirmación.', true);
+}
+
+async function signOut() {
+  await db.auth.signOut();
+}
+
+db.auth.onAuthStateChange((event, session) => {
+  user = session?.user || null;
+  if (user) {
+    document.getElementById('auth').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    showTab('dashboard');
+  } else {
+    document.getElementById('auth').style.display = 'block';
+    document.getElementById('app').style.display = 'none';
+  }
+});
+
+async function showTab(tab) {
+  const content = document.getElementById('content');
+  content.innerHTML = '<p>Cargando...</p>';
+  if (tab === 'dashboard') await loadDashboard();
+  else if (tab === 'projects') await loadProjects();
+  else if (tab === 'tasks') await loadTasks();
+  else if (tab === 'transactions') await loadTransactions();
+  else if (tab === 'debts') await loadDebts();
+  else if (tab === 'clients') await loadClients();
+}
+
+async function loadDashboard() {
+  const { data: tx } = await db.from('transactions').select('*');
+  const { data: debts } = await db.from('debts').select('*');
+  const { data: tasks } = await db.from('tasks').select('*').eq('status', 'pendiente');
+  const ingresos = tx?.filter(t => t.type === 'ingreso').reduce((s, t) => s + Number(t.amount), 0) || 0;
+  const egresos = tx?.filter(t => t.type === 'egreso').reduce((s, t) => s + Number(t.amount), 0) || 0;
+  const deudaTotal = debts?.reduce((s, d) => s + Number(d.total_amount) - Number(d.paid_amount), 0) || 0;
+  document.getElementById('content').innerHTML = `
+    <h2>Dashboard</h2>
+    <div class="flex">
+      <div class="card"><strong>Ingresos</strong><br>$${ingresos.toFixed(2)}</div>
+      <div class="card"><strong>Egresos</strong><br>$${egresos.toFixed(2)}</div>
+      <div class="card"><strong>Balance</strong><br>$${(ingresos - egresos).toFixed(2)}</div>
+      <div class="card"><strong>Deuda pendiente</strong><br>$${deudaTotal.toFixed(2)}</div>
+      <div class="card"><strong>Tareas pendientes</strong><br>${tasks?.length || 0}</div>
+    </div>
+    <p><em>Prioridad: Wasky → GoKantina → Movilnet → deudas. Yummi local como apoyo.</em></p>
+  `;
+}
+
+async function loadProjects() {
+  const { data: projects } = await db.from('projects').select('*').order('priority', { ascending: true });
+  let html = `<h2>Proyectos</h2>
+  <form id="form-project">
+    <input name="name" placeholder="Nombre" required>
+    <input name="type" placeholder="Tipo">
+    <input name="priority" type="number" placeholder="Prioridad 1-5" value="3" min="1" max="5">
+    <input name="next_action" placeholder="Próxima acción">
+    <button type="submit">Agregar</button>
+  </form><ul>`;
+  projects?.forEach(p => {
+    html += `<li>
+      <button class="del" onclick="delRow('projects','${p.id}','loadProjects')">X</button>
+      <strong>${p.name}</strong> (${p.type || 'sin tipo'}) — Prioridad ${p.priority} — ${p.status}<br>
+      Próxima: ${p.next_action || '—'}
+    </li>`;
+  });
+  html += `</ul>`;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('form-project').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await db.from('projects').insert({
+      user_id: user.id,
+      name: fd.get('name'),
+      type: fd.get('type'),
+      priority: parseInt(fd.get('priority')) || 3,
+      next_action: fd.get('next_action')
+    });
+    loadProjects();
+  };
+}
+
+async function loadTasks() {
+  const { data: tasks } = await db.from('tasks').select('*').order('priority', { ascending: true });
+  const { data: projects } = await db.from('projects').select('id, name');
+  let html = `<h2>Tareas</h2>
+  <form id="form-task">
+    <input name="title" placeholder="Tarea" required>
+    <select name="project_id"><option value="">Sin proyecto</option>${projects?.map(p => `<option value="${p.id}">${p.name}</option>`).join('')}</select>
+    <input name="priority" type="number" placeholder="Prioridad 1-5" value="3" min="1" max="5">
+    <input name="due_date" type="date">
+    <button type="submit">Agregar</button>
+  </form><ul>`;
+  tasks?.forEach(t => {
+    const proj = projects?.find(p => p.id === t.project_id)?.name || 'sin proyecto';
+    html += `<li>
+      <button class="del" onclick="delRow('tasks','${t.id}','loadTasks')">X</button>
+      <button onclick="toggleTask('${t.id}','${t.status}')" style="float:right;margin-right:0.5rem;padding:0.25rem 0.6rem;border-radius:4px;border:none;cursor:pointer;background:${t.status === 'pendiente' ? '#fbbf24' : '#10b981'};color:white;font-size:0.8rem;">${t.status}</button>
+      <strong>${t.title}</strong><br>
+      ${proj} — Prioridad ${t.priority} — ${t.due_date || 'sin fecha'}
+    </li>`;
+  });
+  html += `</ul>`;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('form-task').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await db.from('tasks').insert({
+      user_id: user.id,
+      title: fd.get('title'),
+      project_id: fd.get('project_id') || null,
+      priority: parseInt(fd.get('priority')) || 3,
+      due_date: fd.get('due_date') || null
+    });
+    loadTasks();
+  };
+}
+
+async function toggleTask(id, status) {
+  const newStatus = status === 'pendiente' ? 'completada' : 'pendiente';
+  await db.from('tasks').update({ status: newStatus }).eq('id', id);
+  loadTasks();
+}
+
+async function loadTransactions() {
+  const { data: tx } = await db.from('transactions').select('*').order('date', { ascending: false }).limit(50);
+  const ingresos = tx?.filter(t => t.type === 'ingreso').reduce((s, t) => s + Number(t.amount), 0) || 0;
+  const egresos = tx?.filter(t => t.type === 'egreso').reduce((s, t) => s + Number(t.amount), 0) || 0;
+  let html = `<h2>Finanzas</h2>
+  <div class="flex">
+    <div class="card"><strong>Ingresos (últ. 50)</strong><br>$${ingresos.toFixed(2)}</div>
+    <div class="card"><strong>Egresos (últ. 50)</strong><br>$${egresos.toFixed(2)}</div>
+  </div>
+  <form id="form-tx">
+    <input name="date" type="date" required>
+    <select name="type"><option value="ingreso">Ingreso</option><option value="egreso">Egreso</option></select>
+    <input name="amount" type="number" step="0.01" placeholder="Monto" required>
+    <input name="category" placeholder="Categoría (gasolina, colegio...)">
+    <input name="description" placeholder="Descripción">
+    <button type="submit">Agregar</button>
+  </form><ul>`;
+  tx?.forEach(t => {
+    const color = t.type === 'ingreso' ? '#10b981' : '#ef4444';
+    html += `<li>
+      <button class="del" onclick="delRow('transactions','${t.id}','loadTransactions')">X</button>
+      <strong style="color:${color}">${t.type.toUpperCase()}</strong> $${Number(t.amount).toFixed(2)} — ${t.date}<br>
+      ${t.category || ''} ${t.description || ''}
+    </li>`;
+  });
+  html += `</ul>`;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('form-tx').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await db.from('transactions').insert({
+      user_id: user.id,
+      date: fd.get('date'),
+      type: fd.get('type'),
+      amount: parseFloat(fd.get('amount')),
+      category: fd.get('category'),
+      description: fd.get('description')
+    });
+    loadTransactions();
+  };
+}
+
+async function loadDebts() {
+  const { data: debts } = await db.from('debts').select('*').order('priority', { ascending: true });
+  const totalPend = debts?.reduce((s, d) => s + (Number(d.total_amount) - Number(d.paid_amount)), 0) || 0;
+  let html = `<h2>Deudas</h2>
+  <div class="card"><strong>Deuda pendiente total:</strong> $${totalPend.toFixed(2)}</div>
+  <form id="form-debt">
+    <input name="creditor" placeholder="Acreedor" required>
+    <input name="total_amount" type="number" step="0.01" placeholder="Monto total" required>
+    <input name="paid_amount" type="number" step="0.01" placeholder="Pagado" value="0">
+    <input name="due_date" type="date">
+    <input name="priority" type="number" placeholder="Prioridad 1-5" value="3" min="1" max="5">
+    <button type="submit">Agregar</button>
+  </form><ul>`;
+  debts?.forEach(d => {
+    const pend = Number(d.total_amount) - Number(d.paid_amount);
+    html += `<li>
+      <button class="del" onclick="delRow('debts','${d.id}','loadDebts')">X</button>
+      <strong>${d.creditor}</strong> — Prioridad ${d.priority}<br>
+      Total: $${Number(d.total_amount).toFixed(2)} — Pagado: $${Number(d.paid_amount).toFixed(2)} — <strong style="color:#ef4444">Pendiente: $${pend.toFixed(2)}</strong>
+    </li>`;
+  });
+  html += `</ul>`;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('form-debt').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await db.from('debts').insert({
+      user_id: user.id,
+      creditor: fd.get('creditor'),
+      total_amount: parseFloat(fd.get('total_amount')),
+      paid_amount: parseFloat(fd.get('paid_amount')) || 0,
+      due_date: fd.get('due_date') || null,
+      priority: parseInt(fd.get('priority')) || 3
+    });
+    loadDebts();
+  };
+}
+
+async function loadClients() {
+  const { data: clients } = await db.from('clients').select('*').order('created_at', { ascending: false });
+  let html = `<h2>Clientes</h2>
+  <form id="form-client">
+    <input name="name" placeholder="Nombre" required>
+    <input name="type" placeholder="Tipo (colegio, empresa...)">
+    <input name="contact" placeholder="Contacto">
+    <button type="submit">Agregar</button>
+  </form><ul>`;
+  clients?.forEach(c => {
+    html += `<li>
+      <button class="del" onclick="delRow('clients','${c.id}','loadClients')">X</button>
+      <strong>${c.name}</strong> (${c.type || 'sin tipo'}) — ${c.status}<br>
+      ${c.contact || ''}
+    </li>`;
+  });
+  html += `</ul>`;
+  document.getElementById('content').innerHTML = html;
+  document.getElementById('form-client').onsubmit = async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await db.from('clients').insert({
+      user_id: user.id,
+      name: fd.get('name'),
+      type: fd.get('type'),
+      contact: fd.get('contact')
+    });
+    loadClients();
+  };
+}
+
+async function delRow(table, id, reloadFn) {
+  if (!confirm('¿Eliminar este registro?')) return;
+  const { error } = await db.from(table).delete().eq('id', id);
+  if (error) alert(error.message);
+  else window[reloadFn]();
+}
+</script>
+</body>
+</html>
